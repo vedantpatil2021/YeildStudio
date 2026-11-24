@@ -13,7 +13,9 @@ a Python Earth Engine Studio.
 ├── email-templates/   Supabase Auth email templates (invite, sign-in code)
 ├── data/              Source data for the app (large boundary file is not in git)
 ├── .github/workflows/ GitHub Pages deploy for the frontend
-├── start.sh / stop.sh Start / stop backend (port 8000) and frontend (port 5173) locally
+├── start.sh / stop.sh Start / stop all services, or one (backend on 8000, frontend on 5173)
+├── scripts/lib.sh     Shared by start.sh and stop.sh: services, ports, log rotation
+├── logs/              One log file per service (created on start, not in git)
 └── PLAN.md            Plan for the full application
 ```
 
@@ -23,9 +25,24 @@ a Python Earth Engine Studio.
 git config core.hooksPath .githooks             # once per clone: blocks commits containing secrets
 cp backend/.env.example backend/.env            # fill in
 cp frontend/.env.example frontend/.env.local    # fill in (optional: without it only the demo sign-in works)
-./start.sh                                      # installs dependencies on first run
-./stop.sh
+./start.sh                                      # all services; installs dependencies on first run
+./start.sh backend                              # or just one: backend | frontend
+./stop.sh                                       # all services, or ./stop.sh frontend
 ```
+
+## Logs
+
+Every service writes to its own file in `logs/` (ignored by git), each line timestamped:
+
+| File | What is in it |
+|---|---|
+| `logs/backend.log` | API messages, warnings, errors with tracebacks, uvicorn start/stop |
+| `logs/backend-access.log` | one line per HTTP request: client, method, path, status, duration, signed-in user |
+| `logs/earth-engine.log` | Earth Engine script runs (duration, layers, exports, errors), export status, cancels |
+| `logs/frontend.log` | Vite dev server output |
+
+Each start rotates the service's logs (`backend.log` → `backend.log.1` … `.5`). Follow one live with
+`tail -f logs/backend.log`. Set `LOG_LEVEL=DEBUG` in `backend/.env` for more detail.
 
 Requirements: Node.js 22+, [uv](https://docs.astral.sh/uv/) (creates the backend's Python 3.12 environment).
 

@@ -15,15 +15,17 @@ Settings come from the environment (see .env.example). Run from v2.0/app/backend
     uvicorn main:app --reload --port 8000
 """
 import json
+import logging
 import os
 import re
+import time
 import uuid
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 
 import jwt
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
@@ -32,6 +34,12 @@ for line in (Path(__file__).parent / ".env").read_text().splitlines() if (Path(_
     if "=" in line and not line.lstrip().startswith("#"):
         key, value = line.split("=", 1)
         os.environ.setdefault(key.strip(), value.strip())
+
+import logging_setup  # noqa: E402
+
+LOG_DIR = logging_setup.setup()
+log = logging.getLogger("yieldstudio.api")
+access_log = logging.getLogger("yieldstudio.access")
 
 import ee_runner  # noqa: E402  (reads EE_* settings from the environment loaded above)
 
@@ -50,6 +58,32 @@ SCRIPT_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_. -]{0,78}\.py$")
 app = FastAPI(title="Yield Studio API")
 app.add_middleware(CORSMiddleware, allow_origins=FRONTEND, allow_methods=["*"], allow_headers=["*"])
 bearer = HTTPBearer(auto_error=False)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """One line per request in backend-access.log; unexpected errors also go to backend.log with a traceback."""
+    start = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    except Exception:
+        log.exception("Unhandled error in %s %s", request.method, request.url.path)
+        raise
+    finally:
+        ms = (time.perf_counter() - start) * 1000
+        user = getattr(request.state, "user", "-")
+        client = request.client.host if request.client else "-"
+        access_log.info('%s "%s %s" %d %.0fms user=%s', client, request.method, request.url.path, status, ms, user)
+
+
+@app.on_event("startup")
+def announce():
+    log.info("Yield Studio API started (logs in %s; database %s, Earth Engine %s, invitations %s)", LOG_DIR,
+             "configured" if DATABASE_URL else "NOT configured", "configured" if ee_runner.configured() else "NOT configured",
+             "configured" if SERVICE_KEY else "NOT configured")
 jwks = jwt.PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json", cache_keys=True) if SUPABASE_URL else None
 
 
@@ -64,7 +98,7 @@ class User(BaseModel):
     email: str
 
 
-def current_user(creds: HTTPAuthorizationCredentials | None = Depends(bearer)) -> User:
+def current_user(request: Request, creds: HTTPAuthorizationCredentials | None = Depends(bearer)) -> User:
     """The signed-in user, from the Supabase access token the website sends."""
     if creds is None:
         raise HTTPException(401, "Sign in first")
@@ -78,13 +112,16 @@ def current_user(creds: HTTPAuthorizationCredentials | None = Depends(bearer)) -
             claims = jwt.decode(token, key, algorithms=[alg], audience="authenticated")
         else:
             raise HTTPException(401, "Unsupported sign-in token; set SUPABASE_URL (and SUPABASE_JWT_SECRET for legacy projects)")
-    except jwt.PyJWTError:
+    except jwt.PyJWTError as e:
+        log.info("Rejected sign-in token: %s", e)
         raise HTTPException(401, "Session expired, sign in again")
     email = (claims.get("email") or "").lower()
     if not osu_email(email):
+        log.warning("Refused non-OSU account %s", email or "(no email)")
         raise HTTPException(403, "Only @osu.edu and @buckeyemail.osu.edu addresses can use Yield Studio")
     if email == TESTER:
         raise HTTPException(403, "tester@osu.edu is the offline demo account and does not use the server")
+    request.state.user = email
     return User(id=claims["sub"], email=email)
 
 
@@ -190,6 +227,7 @@ def auth_admin(method: str, path: str, body: dict | None = None) -> dict:
             raise HTTPException(429, "Supabase's email limit was reached. Wait a while, or add your own SMTP sender.")
         if "database error" in msg.lower():
             raise HTTPException(422, "Only @osu.edu and @buckeyemail.osu.edu addresses can be invited.")
+        log.error("Supabase Auth admin %s %s failed: %s", method, path, msg)
         raise HTTPException(502, f"Supabase Auth: {msg}")
 
 
@@ -216,6 +254,7 @@ def invite(body: InviteIn, user: User = Depends(admin_user)):
     if email == TESTER:
         raise HTTPException(422, "tester@osu.edu is the offline demo account and cannot be invited.")
     made = auth_admin("POST", "/invite", {"email": email, "data": {"invited_by": user.email}})
+    log.info("%s invited %s", user.email, email)
     with db() as conn:
         return one(q(conn, INVITE_COLS + " where id = %s", (made.get("id"),)), "Invitation")
 
@@ -228,6 +267,7 @@ def revoke_invite(user_id: uuid.UUID, user: User = Depends(admin_user)):
     if row["last_sign_in_at"] is not None:
         raise HTTPException(409, "Already accepted: this person has signed in.")
     auth_admin("DELETE", f"/admin/users/{user_id}")
+    log.info("%s withdrew the invitation of user %s", user.email, user_id)
 
 
 # ---- projects ------------------------------------------------------------------------------------------------
@@ -425,6 +465,7 @@ def refresh(conn, task: dict) -> dict:
     try:
         s = ee_runner.task_status(task["ee_task_id"])
     except Exception as e:
+        logging.getLogger("yieldstudio.ee").warning("Could not read status of task %s: %s", task["ee_task_id"], e)
         return {**task, "error": f"Could not read status: {e}"}
     task = q(conn, f"update tasks set state = %s, progress = %s, error = %s where id = %s returning {TASK_COLS}",
              (s["state"], s["progress"], s["error"], task["id"]))[0]
