@@ -1,16 +1,43 @@
-# AgSensing · Yield Studio
+# Yield Studio
 
 Web platform for the AgSensing Lab's crop yield work at The Ohio State University: 30 m corn and soybean yield maps
 estimated from satellite greenness and August weather (method of KC & Khanal, 2023), with a no-code Explore page and
 a Python Earth Engine Studio.
 
-| Folder | What it is |
-|---|---|
-| `frontend/` | React + Vite website (see its README). Deployed to GitHub Pages by `.github/workflows/deploy.yml`. |
-| `backend/` | FastAPI, Supabase schema (OSU-only one-time-code sign-in) and the Cloud Storage → Globus → OSC file pipeline. |
-| `PLAN.md` | Plan for the full application. |
-| `prototypes/` | First single-file HTML mock-ups. |
-| `data/` | Source data for the app (the large county boundary file is not in git). |
+## Repository layout
 
-Until Supabase is configured the sign-in is a demo: any @osu.edu or @buckeyemail.osu.edu address, code `0000`.
-The maps on the site are static demo files made from the 2009–2019 results; live Earth Engine comes in Phase 1 of the plan.
+```
+.
+├── frontend/          React + Vite website (see frontend/README.md)
+├── backend/           FastAPI API, Earth Engine runner, Supabase schema, file pipeline (see backend/README.md)
+├── supabase-local/    Self-hosted Supabase (Docker Compose) for local development
+├── email-templates/   Supabase Auth email templates (invite, sign-in code)
+├── data/              Source data for the app (large boundary file is not in git)
+├── prototypes/        First single-file HTML mock-ups
+├── .github/workflows/ GitHub Pages deploy for the frontend
+├── start.sh / stop.sh Start / stop backend (port 8000) and frontend (port 5173) locally
+└── PLAN.md            Plan for the full application
+```
+
+## Quick start
+
+```bash
+cp backend/.env.example backend/.env            # fill in
+cp frontend/.env.example frontend/.env.local    # fill in (optional: without it only the demo sign-in works)
+./start.sh                                      # installs dependencies on first run
+./stop.sh
+```
+
+Requirements: Node.js 22+, [uv](https://docs.astral.sh/uv/) (creates the backend's Python 3.12 environment).
+
+Notes:
+- `backend/.env` → `DATA_ROOT` must point at the folder that holds `outputs/v2.0/yield_maps`; the default assumes
+  the parent research repository.
+- The 30 m map layers in `frontend/public/cog/` (~1.2 GB) are not in git; rebuild them with
+  `frontend/scripts/build_demo_data.py`.
+- Until Supabase is configured the sign-in is a demo: any @osu.edu or @buckeyemail.osu.edu address, code `0000`.
+
+## Deploy
+
+`.github/workflows/deploy.yml` builds `frontend/` and publishes it to GitHub Pages on every push to `main`
+(one-time: repo Settings → Pages → Source: "GitHub Actions").

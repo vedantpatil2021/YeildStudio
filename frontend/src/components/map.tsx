@@ -5,7 +5,8 @@ import type { Bounds, Meta } from "@/lib/api"
 import { GeoTiffLayer } from "@/lib/geotiff-layer"
 import { cn } from "@/lib/utils"
 
-export type MapLayer = { id: string; key: string; name: string; visible: boolean; opacity: number }
+/** key = a GeoTIFF layer of meta.json; or tiles = a map-tile URL (an Earth Engine getMapId result from a live run). */
+export type MapLayer = { id: string; key: string; name: string; visible: boolean; opacity: number; tiles?: string }
 
 const esri = (service: string) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`
 /** Base tiles under the data, label tiles over it (so place names stay readable on top of a yield map). */
@@ -43,7 +44,7 @@ type Props = {
 export function MapView({ meta, layers, basemap, onClick, marker, mapRef, counties, selected, onCounty, countyTip, showCounties = false }: Props) {
   const div = useRef<HTMLDivElement>(null)
   const map = useRef<L.Map | null>(null)
-  const overlays = useRef<Record<string, { key: string; ov: GeoTiffLayer }>>({})
+  const overlays = useRef<Record<string, { key: string; ov: L.GridLayer }>>({})
   const base = useRef<L.TileLayer[]>([])
   const countyLayer = useRef<L.GeoJSON | null>(null)
   const hovered = useRef<string | null>(null)
@@ -132,14 +133,21 @@ export function MapView({ meta, layers, basemap, onClick, marker, mapRef, counti
     const ids = new Set(layers.map((l) => l.id))
     for (const [id, o] of Object.entries(overlays.current)) if (!ids.has(id)) { o.ov.remove(); delete overlays.current[id] }
     layers.forEach((l, i) => {
-      if (!meta.layers[l.key]) return     // no GeoTIFF for this layer
+      if (!l.tiles && !meta.layers[l.key]) return     // no GeoTIFF for this layer
       let o = overlays.current[l.id]
-      if (!o || o.key !== l.key) {
+      const key = l.tiles ?? l.key
+      if (!o || o.key !== key) {
         o?.ov.remove()
+        if (l.tiles) {
+          o = overlays.current[l.id] = { key, ov: L.tileLayer(l.tiles, { pane: "data", maxZoom: MAX_ZOOM, attribution: "Google Earth Engine" }).addTo(map.current!) }
+          o.ov.setOpacity(l.visible ? l.opacity : 0)
+          o.ov.setZIndex(10 + i)
+          return
+        }
         const layer = meta.layers[l.key], pal = meta.palettes[layer.kind]
         const ov = new GeoTiffLayer(layer.url, { colors: pal.colors, min: pal.min, max: pal.max, scale: layer.scale, nodata: layer.nodata },
           { pane: "data", bounds: L.latLngBounds(layer.bounds), maxZoom: MAX_ZOOM })
-        o = overlays.current[l.id] = { key: l.key, ov: ov.addTo(map.current!) }
+        o = overlays.current[l.id] = { key, ov: ov.addTo(map.current!) }
       }
       o.ov.setOpacity(l.visible ? l.opacity : 0)
       o.ov.setZIndex(10 + i)

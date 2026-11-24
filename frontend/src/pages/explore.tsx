@@ -16,6 +16,8 @@ import { YearTimeline } from "@/components/year-timeline"
 import { FIRST_YEAR, HLS_FROM, LAST_YEAR, YEARS, modelFor, useCounties, useMeta, valueAt, yearMeans, type Crop, type Meta } from "@/lib/api"
 import { countyAt, countyInfo, countyTipHtml } from "@/lib/county"
 import { BU_PER_T, CROP_NAME, YEAR_NOTES, countyLabel, fmt } from "@/lib/constants"
+import { useAuth } from "@/lib/auth"
+import { storeFor } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 const CROPS: { id: Crop; Icon: typeof Wheat; sub: string; bg: string }[] = [
@@ -60,10 +62,10 @@ function Results({ meta, crop, year, county, setCounty, counties: fc }: { meta: 
           <NeumorphEyebrow intent="secondary">Your result</NeumorphEyebrow>
           <div className="mt-3 text-sm text-muted-foreground">Average {name} yield in {year}</div>
           <div className="flex items-baseline gap-2">
-            <span className="text-5xl font-semibold tracking-tight leading-none text-foreground"><RollingNumber value={st.mean} precision={1} format={(v) => v.toFixed(1)} /></span>
-            <span className="text-sm text-muted-foreground">tonnes per hectare</span>
+            <span className="text-5xl font-semibold tracking-tight leading-none text-foreground"><RollingNumber value={Math.round(st.mean * BU_PER_T[crop])} /></span>
+            <span className="text-sm text-muted-foreground">bushels per acre</span>
           </div>
-          <div className="mt-1 text-sm text-muted-foreground">≈ <b className="text-foreground"><RollingNumber value={Math.round(st.mean * BU_PER_T[crop])} /></b> bushels per acre</div>
+          <div className="mt-1 text-sm text-muted-foreground">≈ <b className="text-foreground"><RollingNumber value={st.mean} precision={1} format={(v) => v.toFixed(1)} /></b> tonnes per hectare</div>
           <div className={cn("mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold", diff >= 0 ? "bg-neutral-100 text-emerald-700" : "bg-red-50 text-red-700")}>
             {diff >= 0 ? "▲" : "▼"} {Math.abs(diff).toFixed(0)}% {diff >= 0 ? "above" : "below"} the {FIRST_YEAR}–{LAST_YEAR} average
           </div>
@@ -129,6 +131,21 @@ export default function Explore() {
   const [gee, setGee] = useState(false)
   const [tour, setTour] = useState(() => !seen.get("ys_explore_tour"))
   const mapRef = useRef<L.Map | null>(null)
+  const { mode } = useAuth()
+  const store = storeFor(mode ?? "tester")
+  const restored = useRef(false)
+
+  useEffect(() => {     // each user comes back to the crop and year they looked at last
+    store.settings().then((s) => {
+      if (s.explore?.crop) setCrop(s.explore.crop)
+      if (s.explore?.year && YEARS.includes(s.explore.year)) setYear(s.explore.year)
+    }).catch(() => {}).finally(() => { restored.current = true })
+  }, [store])
+  useEffect(() => {
+    if (!restored.current || !crop || !year) return
+    const t = setTimeout(() => void store.saveSettings({ explore: { crop, year } }).catch(() => {}), 800)
+    return () => clearTimeout(t)
+  }, [crop, year])
 
   const ready = crop !== null && year !== null
   const key = ready ? `yield_${crop}_${year}` : ""

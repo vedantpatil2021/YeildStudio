@@ -1,4 +1,37 @@
+# ---- OS / editors ------------------------------------------------------------------------------------------
 .DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# ---- secrets (only the *.example files are committed) ------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.local
+*.old
+service-account*.json
+
+# ---- frontend (Node) ---------------------------------------------------------------------------------------
+node_modules/
+dist/
+dist-ssr/
+*.log
+# 30 m map layers (Cloud-Optimized GeoTIFFs, ~1.2 GB); rebuilt by frontend/scripts/build_demo_data.py
+frontend/public/cog/
+
+# ---- backend (Python) --------------------------------------------------------------------------------------
 __pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ---- data --------------------------------------------------------------------------------------------------
 # raw national county file (346 MB); the web copy is frontend/public/data/us_counties.geojson
 data/boundaries/*.geojson
+
+# ---- local runtime -----------------------------------------------------------------------------------------
+# start.sh / stop.sh: process ids and logs
+.run/

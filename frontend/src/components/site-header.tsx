@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { LogOut, Sprout } from "lucide-react"
 import { useAuth } from "@/lib/auth"
+import { resetStores } from "@/lib/store"
 
 export function Brand({ sub }: { sub?: string }) {
   return (
@@ -16,13 +17,14 @@ export function Brand({ sub }: { sub?: string }) {
 }
 
 function Account() {
-  const { email, signOut } = useAuth()
+  const { email, mode, signOut } = useAuth()
   const navigate = useNavigate()
   if (!email) return null
   return (
     <div className="ml-1 flex items-center gap-2 border-l pl-3">
       <span className="hidden max-w-48 truncate text-xs text-muted-foreground md:block" title={email}>{email}</span>
-      <button onClick={async () => { await signOut(); navigate("/login", { replace: true }) }} title="Sign out" aria-label="Sign out"
+      {mode === "tester" && <span className="hidden rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 md:block" title="Offline demo: nothing is saved on the server">TESTER</span>}
+      <button onClick={async () => { await signOut(); resetStores(); navigate("/login", { replace: true }) }} title="Sign out" aria-label="Sign out"
         className="flex size-8 items-center justify-center rounded-lg border bg-white text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900">
         <LogOut size={15} />
       </button>

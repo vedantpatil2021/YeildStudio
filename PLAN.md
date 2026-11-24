@@ -19,9 +19,10 @@ researchers the full power of GEE.
 |---|---|
 | Pipeline (`v2.0/1_gee` … `4_cover_crop_analysis`) | Done in Python; reproduces the paper's results. |
 | Website (`app/frontend`) | Explore and Studio pages, maps, counties, search. Reads static files made from the v2.0 outputs. |
-| Logins | OSU-only one-time-code sign-in (Supabase) on the website and FastAPI; database schema for profiles, files and jobs (`app/backend`). Needs a Supabase project to go live. |
+| Logins | OSU-only one-time-code sign-in (Supabase). `tester@osu.edu` is a UI-only demo with no server. Needs a Supabase project to go live. |
+| Studio backend | Projects, scripts (add, rename, edit/autosave, delete), runs, tasks, assets and per-user settings, all per user (FastAPI + Supabase schema with row level security). Tester mode verified in the browser; live mode waits for a Supabase project. |
 | File pipeline | Cloud Storage → Globus → OSC functions written (`app/backend/pipeline`), not deployed. |
-| Live GEE | Not started. |
+| Live GEE | Studio scripts run on Earth Engine through the API: tile layers, print, centerObject and Export tasks. Tested directly against the runner (`vfactus-ace27`). |
 
 ## Modules
 

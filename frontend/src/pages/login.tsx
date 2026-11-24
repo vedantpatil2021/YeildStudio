@@ -8,11 +8,11 @@ import { TextureCard } from "@/components/ui/texture-card"
 import { seen } from "@/components/guide"
 import { OrbitSurvey } from "@/figures/orbit-survey/orbit-survey"
 import { useMeta } from "@/lib/api"
-import { CODE_LENGTH, DEMO, DEMO_CODE, useAuth } from "@/lib/auth"
+import { TESTER_CODE, TESTER_EMAIL, codeLength, isTester, useAuth } from "@/lib/auth"
 
 const RESEND_S = 60
 
-function CodeBoxes({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled: boolean }) {
+function CodeBoxes({ value, onChange, disabled, length: CODE_LENGTH }: { value: string; onChange: (v: string) => void; disabled: boolean; length: number }) {
   const boxes = useRef<(HTMLInputElement | null)[]>([])
   const focus = (i: number) => boxes.current[Math.max(0, Math.min(CODE_LENGTH - 1, i))]?.focus()
   useEffect(() => focus(value.length), [])
@@ -68,6 +68,7 @@ function SignInForm() {
     setEmail(address); setCode(""); setStep("code"); setWait(RESEND_S)
   }
 
+  const CODE_LENGTH = codeLength(email)
   const verify = async (token = code) => {
     if (token.length !== CODE_LENGTH) return
     setBusy(true); setError("")
@@ -94,10 +95,10 @@ function SignInForm() {
         </label>
       ) : (
         <div className="space-y-3">
-          <p className="text-sm text-neutral-600">{DEMO
-            ? <>Demo sign-in for <span className="font-medium text-neutral-900">{email}</span>: no email is sent yet. Enter <span className="font-medium text-neutral-900">{DEMO_CODE}</span>.</>
+          <p className="text-sm text-neutral-600">{isTester(email)
+            ? <><span className="font-medium text-neutral-900">{TESTER_EMAIL}</span> is the offline demo: no email is sent and nothing is saved on the server. Enter <span className="font-medium text-neutral-900">{TESTER_CODE}</span>.</>
             : <>We sent a {CODE_LENGTH}-digit code to <span className="font-medium text-neutral-900">{email}</span>. It works once and expires soon.</>}</p>
-          <CodeBoxes value={code} disabled={busy} onChange={(v) => { setCode(v); setError(""); if (v.length === CODE_LENGTH) void verify(v) }} />
+          <CodeBoxes length={CODE_LENGTH} value={code} disabled={busy} onChange={(v) => { setCode(v); setError(""); if (v.length === CODE_LENGTH) void verify(v) }} />
         </div>
       )}
 

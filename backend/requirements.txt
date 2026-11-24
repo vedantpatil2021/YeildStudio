@@ -3,3 +3,6 @@ uvicorn[standard]
 pyjwt[crypto]
 psycopg[binary]
 google-cloud-storage
+earthengine-api
+rasterio
+numpy
