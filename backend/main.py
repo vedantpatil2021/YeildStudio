@@ -25,7 +25,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
@@ -37,11 +37,12 @@ for line in (Path(__file__).parent / ".env").read_text().splitlines() if (Path(_
 
 import logging_setup  # noqa: E402
 
-LOG_DIR = logging_setup.setup()
+logging_setup.setup()
 log = logging.getLogger("yieldstudio.api")
 access_log = logging.getLogger("yieldstudio.access")
 
 import ee_runner  # noqa: E402  (reads EE_* settings from the environment loaded above)
+import metrics  # noqa: E402
 
 ALLOWED_DOMAINS = {"osu.edu", "buckeyemail.osu.edu"}
 TESTER = "tester@osu.edu"        # UI-only demo account: handled in the browser, never accepted here
@@ -60,9 +61,12 @@ app.add_middleware(CORSMiddleware, allow_origins=FRONTEND, allow_methods=["*"], 
 bearer = HTTPBearer(auto_error=False)
 
 
+QUIET_PATHS = {"/metrics", "/health"}      # scraped / probed every few seconds: counted, not logged
+
+
 @app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """One line per request in backend-access.log; unexpected errors also go to backend.log with a traceback."""
+async def observe(request: Request, call_next):
+    """Per request: a yieldstudio.access log line and Prometheus metrics; unexpected errors are logged with a traceback."""
     start = time.perf_counter()
     status = 500
     try:
@@ -73,17 +77,33 @@ async def log_requests(request: Request, call_next):
         log.exception("Unhandled error in %s %s", request.method, request.url.path)
         raise
     finally:
-        ms = (time.perf_counter() - start) * 1000
-        user = getattr(request.state, "user", "-")
-        client = request.client.host if request.client else "-"
-        access_log.info('%s "%s %s" %d %.0fms user=%s', client, request.method, request.url.path, status, ms, user)
+        secs = time.perf_counter() - start
+        path = request.url.path
+        route = getattr(request.scope.get("route"), "path", None) or "unmatched"   # template, e.g. /projects/{project_id}
+        if path != "/metrics":
+            metrics.HTTP_REQUESTS.labels(request.method, route, str(status)).inc()
+            metrics.HTTP_LATENCY.labels(request.method, route).observe(secs)
+        if path not in QUIET_PATHS:
+            user = getattr(request.state, "user", "-")
+            client = request.client.host if request.client else "-"
+            access_log.info('%s "%s %s" %d %.0fms user=%s', client, request.method, path, status, secs * 1000, user,
+                            extra={"client": client, "method": request.method, "path": path, "route": route,
+                                   "status": status, "duration_ms": round(secs * 1000, 1), "user": user})
+
+
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics():
+    """Prometheus scrape endpoint (only reachable from the Docker network and localhost)."""
+    return Response(metrics.latest(), media_type=metrics.CONTENT_TYPE)
 
 
 @app.on_event("startup")
 def announce():
-    log.info("Yield Studio API started (logs in %s; database %s, Earth Engine %s, invitations %s)", LOG_DIR,
+    log.info("Yield Studio API started (database %s, Earth Engine %s, invitations %s)",
              "configured" if DATABASE_URL else "NOT configured", "configured" if ee_runner.configured() else "NOT configured",
              "configured" if SERVICE_KEY else "NOT configured")
+
+
 jwks = jwt.PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json", cache_keys=True) if SUPABASE_URL else None
 
 

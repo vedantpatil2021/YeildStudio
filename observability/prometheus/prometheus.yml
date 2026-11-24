@@ -1,0 +1,25 @@
+# Prometheus scrapes every 15 s. Data is kept 15 days on the prometheus-data volume (see docker-compose.yml).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: backend          # Yield Studio API: requests, latency, Earth Engine runs, Python process
+    static_configs:
+      - targets: ["backend:8000"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]

@@ -1,0 +1,126 @@
+# Yield Studio: the app and its observability stack.
+#
+#   docker compose up -d --build        build and start everything
+#   docker compose ps                   what is running, health
+#   docker compose logs -f backend      follow one service in the terminal (Grafana → Explore → Loki for history)
+#   docker compose down                 stop (data volumes are kept; add -v to delete them)
+#
+# Before the first start:  cp .env.example .env  and set GRAFANA_ADMIN_PASSWORD;
+#                          backend/.env and frontend/.env.local must exist (copy their .env.example files).
+#
+# Ports are published on 127.0.0.1 only (not reachable from other machines):
+#   website http://localhost:5173 · API http://localhost:8000 · Grafana http://localhost:3000 · Prometheus http://localhost:9090
+#
+# Logs: every container writes to stdout; Alloy ships it to Loki; Grafana shows it. Metrics: Prometheus scrapes the
+# API's /metrics and the stack's own endpoints. Config for all of it is in observability/.
+
+name: yieldstudio
+
+x-logging: &logging           # Docker's own copy of container output, capped (Loki keeps the history)
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ---- application ------------------------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+    image: yieldstudio-backend:latest
+    env_file: ./backend/.env
+    environment:
+      DATA_ROOT: /data
+      LOG_FORMAT: json
+    volumes:
+      # 30 m yield-map GeoTIFFs used by /predict (default: the parent research repository)
+      - ${YIELD_MAPS_DIR:-../../outputs/v2.0/yield_maps}:/data/outputs/v2.0/yield_maps:ro
+      # Earth Engine credentials from `earthengine authenticate` on this machine
+      - ${EE_CREDENTIALS_DIR:-${HOME}/.config/earthengine}:/home/app/.config/earthengine:ro
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    restart: unless-stopped
+    logging: *logging
+
+  frontend:
+    build:
+      context: ./frontend
+      secrets:
+        - frontend_env
+    image: yieldstudio-frontend:latest
+    volumes:
+      - ./frontend/public/cog:/usr/share/nginx/html/cog:ro      # map layers, too large for the image
+    ports:
+      - "127.0.0.1:${WEB_PORT:-5173}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+  # ---- observability ----------------------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.5.3
+    command: -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./observability/loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+    logging: *logging
+
+  alloy:
+    image: grafana/alloy:v1.10.2
+    command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro            # reads container logs through the Docker API
+      - alloy-data:/var/lib/alloy/data
+    depends_on:
+      - loki
+    restart: unless-stopped
+    logging: *logging
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    restart: unless-stopped
+    logging: *logging
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env (copy .env.example)}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/yield-studio.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - loki
+      - prometheus
+    restart: unless-stopped
+    logging: *logging
+
+secrets:
+  frontend_env:                 # VITE_* build settings (public values baked into the website bundle)
+    file: ./frontend/.env.local
+
+volumes:
+  loki-data:
+  alloy-data:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,17 @@
+# Keep secrets, local environments and caches out of the image build context.
+.env
+.env.*
+!.env.example
+*.json
+*.pem
+*.key
+secrets/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+pipeline/env.yaml
+Dockerfile
+.dockerignore
+README.md

@@ -66,13 +66,11 @@ venv/
 # raw national county file (346 MB); the web copy is frontend/public/data/us_counties.geojson
 data/boundaries/*.geojson
 
-# ---- local runtime: run.sh ------------------------------------------------------------------------------
-# process ids
-.run/
-# service logs (backend.log, backend-access.log, earth-engine.log, frontend.log) and their rotated copies (*.log.1 …)
+# ---- local logs (the app logs to stdout -> Loki; these only catch stray files) --------------------------------
 logs/
 *.log
 *.log.[0-9]*
+.run/
 
 # ---- kept locally, not in the repo -------------------------------------------------------------------------
 supabase-local/

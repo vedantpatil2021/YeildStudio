@@ -6,3 +6,4 @@ google-cloud-storage
 earthengine-api
 rasterio
 numpy
+prometheus-client

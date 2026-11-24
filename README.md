@@ -8,43 +8,74 @@ a Python Earth Engine Studio.
 
 ```
 .
-├── frontend/          React + Vite website (see frontend/README.md)
-├── backend/           FastAPI API, Earth Engine runner, Supabase schema, file pipeline (see backend/README.md)
+├── frontend/          React + Vite website; Dockerfile builds it and serves it with nginx (see frontend/README.md)
+├── backend/           FastAPI API, Earth Engine runner, Supabase schema, file pipeline; Dockerfile (see backend/README.md)
+├── observability/     Loki, Grafana Alloy, Prometheus and Grafana configuration (dashboards, datasources)
+├── docker-compose.yml The whole stack: app + observability
 ├── email-templates/   Supabase Auth email templates (invite, sign-in code)
 ├── data/              Source data for the app (large boundary file is not in git)
-├── .github/workflows/ GitHub Pages deploy for the frontend
-├── run.sh             Start / stop / restart / status / logs for all services or one (backend 8000, frontend 5173)
-├── logs/              One log file per service (created on start, not in git)
+├── .github/workflows/ GitHub Pages deploy for the frontend (manual only)
 └── PLAN.md            Plan for the full application
 ```
 
-## Quick start
+## Quick start (Docker)
+
+Requires Docker Desktop (or Docker Engine with Compose v2).
 
 ```bash
 git config core.hooksPath .githooks             # once per clone: blocks commits containing secrets
+cp .env.example .env                            # set GRAFANA_ADMIN_PASSWORD
 cp backend/.env.example backend/.env            # fill in
-cp frontend/.env.example frontend/.env.local    # fill in (optional: without it only the demo sign-in works)
-./run.sh start                                  # all services; installs dependencies on first run
-./run.sh start backend                          # or just one: backend | frontend
-./run.sh status                                 # what is running
-./run.sh restart frontend                       # stop + start
-./run.sh logs earth-engine                      # follow a log live
-./run.sh stop                                   # all services, or ./run.sh stop frontend
+cp frontend/.env.example frontend/.env.local    # fill in (baked into the website at build time)
+earthengine authenticate                        # once, unless EE_SERVICE_ACCOUNT_FILE is used
+
+docker compose up -d --build                    # build and start everything
+docker compose ps                               # status and health
+docker compose up -d --build backend            # rebuild / restart one service after a change
+docker compose logs -f backend                  # follow one service in the terminal
+docker compose down                             # stop (volumes kept; add -v to delete logs/metrics/Grafana data)
 ```
 
-## Logs
-
-Every service writes to its own file in `logs/` (ignored by git), each line timestamped:
-
-| File | What is in it |
+| What | URL (127.0.0.1 only) |
 |---|---|
-| `logs/backend.log` | API messages, warnings, errors with tracebacks, uvicorn start/stop |
-| `logs/backend-access.log` | one line per HTTP request: client, method, path, status, duration, signed-in user |
-| `logs/earth-engine.log` | Earth Engine script runs (duration, layers, exports, errors), export status, cancels |
-| `logs/frontend.log` | Vite dev server output |
+| Website | http://localhost:5173 |
+| API (docs at /docs, metrics at /metrics) | http://localhost:8000 |
+| Grafana (user `admin`, password from `.env`) | http://localhost:3000 |
+| Prometheus | http://localhost:9090 |
 
-Each start rotates the service's logs (`backend.log` → `backend.log.1` … `.5`). Follow one live with
-`./run.sh logs backend` (or `backend-access`, `earth-engine`, `frontend`). Set `LOG_LEVEL=DEBUG` in `backend/.env` for more detail.
+## Images
+
+Both images are multi-stage builds: the build stage has the compilers, package managers and sources; the runtime
+stage gets only what runs.
+
+| Image | Build stage | Runtime stage |
+|---|---|---|
+| `yieldstudio-backend` | python:3.12-slim + uv, installs requirements into `/opt/venv`, strips tests, bytecode and unused Google API descriptions | python:3.12-slim + the virtualenv + `*.py`, non-root user `app` |
+| `yieldstudio-frontend` | node:22-alpine, `npm ci` and `vite build` | unprivileged nginx:alpine + `dist/` only (~80 MB) |
+
+The 30 m map layers (`frontend/public/cog/`, ~1.2 GB) and the yield-map GeoTIFFs are mounted into the containers
+rather than copied into the images. Secrets never enter an image: `.dockerignore` excludes `.env` files and keys,
+`backend/.env` is passed at run time, and `frontend/.env.local` is a BuildKit secret during the build.
+
+## Logs and metrics
+
+Every container writes to stdout. **Grafana Alloy** reads it through the Docker API and pushes it to **Loki** (kept
+7 days). **Prometheus** scrapes the API's `/metrics` and the stack's own endpoints (kept 15 days). **Grafana** has
+both as datasources and opens on the provisioned **Yield Studio** dashboard: request rate, errors, latency by route,
+Earth Engine runs and durations, backend memory/CPU, and log panels.
+
+Log streams in Loki (Grafana → Explore → Loki):
+
+| Query | What |
+|---|---|
+| `{service="backend", logger="yieldstudio.api"}` | API messages, warnings, errors with tracebacks |
+| `{service="backend", logger="yieldstudio.access"}` | one line per request: method, path, route, status, duration, user |
+| `{service="backend", logger="yieldstudio.ee"}` | Earth Engine script runs, exports, cancels |
+| `{service="frontend"}` | nginx access log |
+| `{service="backend", level="error"}` | all backend errors |
+
+Set `LOG_LEVEL=DEBUG` in `backend/.env` for more detail. Outside Docker (`uvicorn main:app --reload`) the API logs
+readable text to the terminal instead of JSON.
 
 Requirements: Node.js 22+, [uv](https://docs.astral.sh/uv/) (creates the backend's Python 3.12 environment).
 

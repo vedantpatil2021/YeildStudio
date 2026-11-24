@@ -17,7 +17,9 @@ import tempfile
 import time
 from pathlib import Path
 
-log = logging.getLogger("yieldstudio.ee")   # -> logs/earth-engine.log
+import metrics
+
+log = logging.getLogger("yieldstudio.ee")   # Loki label logger="yieldstudio.ee"
 
 EE_PROJECT = os.environ.get("EE_PROJECT", "")
 KEY_FILE = os.environ.get("EE_SERVICE_ACCOUNT_FILE", "")
@@ -47,8 +49,10 @@ def run_script(code: str, start: str | None = None) -> dict:
     """{logs, layers, center, exports, started, error?} for one script run."""
     if not configured():
         log.warning("Script run refused: EE_PROJECT is not set")
+        metrics.EE_RUNS.labels("export" if start else "script", "not_configured").inc()
         raise EEError("Earth Engine is not configured on the server (set EE_PROJECT).")
     what = f"export {start!r}" if start else "script"
+    kind = "export" if start else "script"
     log.info("Running %s (%d characters of code, limit %d s)", what, len(code), TIMEOUT_S)
     t0 = time.perf_counter()
     env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", ""), "PYTHONDONTWRITEBYTECODE": "1"}
@@ -60,6 +64,7 @@ def run_script(code: str, start: str | None = None) -> dict:
                                   capture_output=True, text=True, timeout=TIMEOUT_S + 10, cwd=cwd, env=env, preexec_fn=_limits)
         except subprocess.TimeoutExpired:
             log.warning("%s stopped after %d s (time limit)", what.capitalize(), TIMEOUT_S)
+            _record(kind, "timeout", time.perf_counter() - t0)
             return {"logs": [], "layers": [], "center": None, "exports": [], "started": None,
                     "error": f"Stopped after {TIMEOUT_S} s. Use an Export for long computations."}
     line = next((ln for ln in reversed(proc.stdout.splitlines()) if ln.startswith(MARKER)), None)
@@ -67,15 +72,22 @@ def run_script(code: str, start: str | None = None) -> dict:
         detail = (proc.stderr or proc.stdout).strip().splitlines()[-1:] or [f"exit code {proc.returncode}"]
         log.error("%s process failed after %.1f s (exit code %s): %s\n%s", what.capitalize(), time.perf_counter() - t0,
                   proc.returncode, detail[0], (proc.stderr or "").strip()[-4000:])
+        _record(kind, "failed", time.perf_counter() - t0)
         return {"logs": [], "layers": [], "center": None, "exports": [], "started": None, "error": f"The script process failed: {detail[0]}"}
     out = json.loads(line[len(MARKER):])
     secs = time.perf_counter() - t0
+    _record(kind, "script_error" if out.get("error") else "ok", secs)
     if out.get("error"):
         log.info("%s finished with a script error after %.1f s: %s", what.capitalize(), secs, str(out["error"])[:500])
     else:
         log.info("%s finished in %.1f s: %d layers, %d exports%s", what.capitalize(), secs, len(out.get("layers") or []),
                  len(out.get("exports") or []), f", started task {out['started']}" if out.get("started") else "")
     return out
+
+
+def _record(kind: str, result: str, secs: float):
+    metrics.EE_RUNS.labels(kind, result).inc()
+    metrics.EE_DURATION.labels(kind).observe(secs)
 
 
 _ready = False

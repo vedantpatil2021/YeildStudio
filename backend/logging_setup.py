@@ -1,51 +1,58 @@
-"""Logging for the API. One file per service area, in LOG_DIR (default: <app>/logs):
+"""Logging for the API: everything goes to stdout, one record per line. In Docker, Grafana Alloy ships the
+container's stdout to Loki, which keeps and indexes it (see ../observability/).
 
-    backend.log          application messages, warnings, errors and tracebacks (also uvicorn start/stop)
-    backend-access.log   one line per HTTP request: method, path, status, duration, user
-    earth-engine.log     Earth Engine work: script runs, export status, cancels, tile requests
+Each record carries the logger name, which Loki turns into a label, so the three streams stay separate:
 
-Files are appended to; ../run.sh rotates them on each start (keeps the last 5 runs). When the API runs in a terminal
-(e.g. `uvicorn main:app --reload`), messages are also printed there.
+    yieldstudio.api      application messages, warnings, errors with tracebacks (and uvicorn start/stop)
+    yieldstudio.access   one line per HTTP request: client, method, path, route, status, duration, user
+    yieldstudio.ee       Earth Engine work: script runs, export status, cancels
 
-Settings: LOG_DIR, LOG_LEVEL (DEBUG, INFO, WARNING, ERROR; default INFO).
+Settings:
+    LOG_FORMAT   json (one JSON object per line; used in Docker) or text (readable; default)
+    LOG_LEVEL    DEBUG, INFO, WARNING, ERROR (default INFO)
 """
+import json
 import logging
 import logging.config
 import os
-import sys
-from pathlib import Path
+from datetime import datetime, timezone
 
-FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
-ACCESS_FORMAT = "%(asctime)s %(message)s"
+# Attributes every LogRecord has; anything else was passed with extra={...} and is kept as a field.
+_STANDARD = set(vars(logging.LogRecord("", 0, "", 0, "", None, None))) | {"message", "asctime", "taskName", "color_message"}
 
 
-def setup() -> Path:
-    log_dir = Path(os.environ.get("LOG_DIR") or Path(__file__).resolve().parents[1] / "logs")
-    log_dir.mkdir(parents=True, exist_ok=True)
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        out = {
+            "time": datetime.fromtimestamp(record.created, timezone.utc).isoformat(timespec="milliseconds"),
+            "level": record.levelname.lower(),
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        out.update({k: v for k, v in vars(record).items() if k not in _STANDARD})
+        if record.exc_info:
+            out["exception"] = self.formatException(record.exc_info)
+        return json.dumps(out, default=str)
+
+
+def setup() -> None:
     level = os.environ.get("LOG_LEVEL", "INFO").upper()
-
-    def file(name: str, fmt: str = "default") -> dict:
-        return {"class": "logging.FileHandler", "filename": str(log_dir / name), "encoding": "utf-8", "formatter": fmt}
-
-    handlers = {"app": file("backend.log"), "access": file("backend-access.log", "access"), "ee": file("earth-engine.log")}
-    to_terminal = sys.stderr.isatty()
-    if to_terminal:
-        handlers["console"] = {"class": "logging.StreamHandler", "stream": "ext://sys.stderr", "formatter": "default"}
-    extra = ["console"] if to_terminal else []
-
+    fmt = "json" if os.environ.get("LOG_FORMAT", "text").lower() == "json" else "text"
     logging.config.dictConfig({
         "version": 1,
         "disable_existing_loggers": False,
-        "formatters": {"default": {"format": FORMAT}, "access": {"format": ACCESS_FORMAT}},
-        "handlers": handlers,
-        "root": {"level": level, "handlers": ["app", *extra]},
+        "formatters": {
+            "json": {"()": JsonFormatter},
+            "text": {"format": "%(asctime)s %(levelname)-7s %(name)s: %(message)s"},
+        },
+        "handlers": {"stdout": {"class": "logging.StreamHandler", "stream": "ext://sys.stdout", "formatter": fmt}},
+        "root": {"level": level, "handlers": ["stdout"]},
         "loggers": {
-            # uvicorn's own messages go to backend.log; its access log is replaced by yieldstudio.access
+            # uvicorn's messages flow to the root handler; its access log is replaced by yieldstudio.access
             "uvicorn": {"level": level, "handlers": [], "propagate": True},
             "uvicorn.error": {"level": level, "handlers": [], "propagate": True},
             "uvicorn.access": {"level": "WARNING", "handlers": [], "propagate": False},
-            "yieldstudio.access": {"level": "INFO", "handlers": ["access", *extra], "propagate": False},
-            "yieldstudio.ee": {"level": level, "handlers": ["ee", *extra], "propagate": False},
+            "yieldstudio.access": {"level": "INFO"},
             # chatty libraries
             "urllib3": {"level": "WARNING"},
             "google": {"level": "WARNING"},
@@ -53,4 +60,3 @@ def setup() -> Path:
             "rasterio": {"level": "WARNING"},
         },
     })
-    return log_dir

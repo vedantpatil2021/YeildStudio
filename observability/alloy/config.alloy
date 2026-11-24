@@ -1,0 +1,74 @@
+// Grafana Alloy: reads the stdout/stderr of every container in this compose project from the Docker API and
+// pushes it to Loki.
+//
+// Labels on every stream:
+//   service    compose service name (backend, frontend, loki, prometheus, grafana, alloy)
+//   container  container name
+// Extra labels parsed from JSON log lines (backend and frontend):
+//   level      info, warning, error, ...
+//   logger     yieldstudio.api | yieldstudio.access | yieldstudio.ee | uvicorn.error | nginx.access
+//
+// Example queries in Grafana → Explore → Loki:
+//   {service="backend", logger="yieldstudio.ee"}                Earth Engine runs
+//   {service="backend", level="error"}                          backend errors
+//   {service="backend", logger="yieldstudio.access"} | json | status >= 500
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+
+  filter {
+    name   = "label"
+    values = ["com.docker.compose.project=yieldstudio"]
+  }
+}
+
+discovery.relabel "containers" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.process.parse.receiver]
+}
+
+loki.process "parse" {
+  // backend and frontend write one JSON object per line: lift level and logger into labels
+  stage.match {
+    selector = "{service=~\"backend|frontend\"}"
+
+    stage.json {
+      expressions = {
+        level  = "level",
+        logger = "logger",
+      }
+    }
+
+    stage.labels {
+      values = {
+        level  = "",
+        logger = "",
+      }
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

@@ -1,0 +1,12 @@
+# Keep secrets, dependencies, build output and the 1.2 GB map layers out of the build context.
+# (.env.local reaches the build only as a BuildKit secret, never as a file in the context.)
+.env
+.env.*
+*.local
+node_modules/
+dist/
+dist-ssr/
+public/cog/
+*.log
+Dockerfile
+.dockerignore
