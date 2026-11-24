@@ -10,10 +10,8 @@ a Python Earth Engine Studio.
 .
 ├── frontend/          React + Vite website (see frontend/README.md)
 ├── backend/           FastAPI API, Earth Engine runner, Supabase schema, file pipeline (see backend/README.md)
-├── supabase-local/    Self-hosted Supabase (Docker Compose) for local development
 ├── email-templates/   Supabase Auth email templates (invite, sign-in code)
 ├── data/              Source data for the app (large boundary file is not in git)
-├── prototypes/        First single-file HTML mock-ups
 ├── .github/workflows/ GitHub Pages deploy for the frontend
 ├── start.sh / stop.sh Start / stop backend (port 8000) and frontend (port 5173) locally
 └── PLAN.md            Plan for the full application

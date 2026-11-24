@@ -194,5 +194,4 @@ v2.0/
     frontend/        React website
     backend/         FastAPI, Supabase schema, and the Cloud Run transfer functions in backend/pipeline/
     data/            source data for the app (county boundaries)
-    prototypes/      first single-file HTML mock-ups
 ```
