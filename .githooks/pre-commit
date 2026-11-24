@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Blocks commits that contain secret files or secret-looking values.
+# Enable once per clone:  git config core.hooksPath .githooks
+# Bypass (only if you are sure):  git commit --no-verify
+set -uo pipefail
+
+bad=0
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+# 1. secret file names (the *.example templates are allowed)
+while IFS= read -r f; do
+  case "$f" in
+    *.example|*.example.*) continue ;;
+  esac
+  if printf '%s\n' "$f" | grep -qiE '(^|/)\.env(\.|$)|\.local$|\.(pem|key|p12|pfx|jks|ppk|kdbx)$|(^|/)id_(rsa|ed25519)|service[-_]?account.*\.json$|credentials.*\.json$|client_secret.*\.json$|[-_]key\.json$|(^|/)(\.npmrc|\.pypirc|\.netrc)$|(^|/)secrets?\.'; then
+    echo "pre-commit: refusing to commit secret file: $f" >&2
+    bad=1
+  fi
+done <<< "$staged"
+
+# 2. secret-looking values in added lines
+patterns='eyJhbGciOi[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|sb_secret_[A-Za-z0-9_-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|"private_key"[[:space:]]*:|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|gh[pousr]_[A-Za-z0-9]{30,}|xox[abprs]-[A-Za-z0-9-]{10,}|sk-(proj-|ant-)?[A-Za-z0-9_-]{30,}|postgres(ql)?://[^:@/[:space:]]+:[^@$<{[:space:]]{6,}@'
+hits=$(git diff --cached -U0 --diff-filter=ACMR | grep -E '^\+[^+]' | grep -nE "$patterns")
+if [ -n "$hits" ]; then
+  echo "pre-commit: secret-looking values in staged changes:" >&2
+  printf '%s\n' "$hits" | cut -c1-120 >&2
+  bad=1
+fi
+
+if [ "$bad" -ne 0 ]; then
+  echo "pre-commit: commit blocked. Unstage the file (git restore --staged <file>) or move the value to an ignored .env file." >&2
+  exit 1
+fi
+exit 0

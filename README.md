@@ -20,6 +20,7 @@ a Python Earth Engine Studio.
 ## Quick start
 
 ```bash
+git config core.hooksPath .githooks             # once per clone: blocks commits containing secrets
 cp backend/.env.example backend/.env            # fill in
 cp frontend/.env.example frontend/.env.local    # fill in (optional: without it only the demo sign-in works)
 ./start.sh                                      # installs dependencies on first run

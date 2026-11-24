@@ -6,12 +6,46 @@
 *.swp
 
 # ---- secrets (only the *.example files are committed) ------------------------------------------------------
+# env files, in any folder
 .env
 .env.*
 !.env.example
 *.local
 *.old
+*.bak
+# Google Cloud / Earth Engine credentials (EE_SERVICE_ACCOUNT_FILE, GOOGLE_APPLICATION_CREDENTIALS)
 service-account*.json
+*service_account*.json
+credentials*.json
+client_secret*.json
+*-key.json
+*_key.json
+gcp*.json
+token*.json
+.config/earthengine/
+# all JSON in backend/ is treated as secret (it has none of its own)
+backend/**/*.json
+# keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.crt
+*.cer
+id_rsa*
+id_ed25519*
+*.ppk
+# other secret stores
+secrets.*
+*.secret
+*.secrets
+.npmrc
+.pypirc
+.netrc
+*.kdbx
+backend/pipeline/env.yaml
+.supabase/
 
 # ---- frontend (Node) ---------------------------------------------------------------------------------------
 node_modules/
