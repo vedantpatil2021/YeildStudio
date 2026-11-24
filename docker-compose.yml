@@ -16,6 +16,20 @@
 
 name: yieldstudio
 
+# Self-hosted Supabase, the full stack from supabase/supabase docker/ (see supabase/README.md and supabase/versions.md):
+#   db (Postgres), auth (GoTrue), rest (PostgREST), realtime, storage, imgproxy, meta, functions (Edge Runtime),
+#   supavisor (pooler), api-gw (Envoy gateway), studio (dashboard), analytics (Logflare), vector (log collector)
+# Studio and the API: http://localhost:54321 (sign in with DASHBOARD_USERNAME / DASHBOARD_PASSWORD from supabase/.env)
+# Postgres: localhost:5432 (session) and :6543 (transaction), through Supavisor
+# Its settings and secrets are in supabase/.env (copy supabase/.env.example, then sh supabase/utils/generate-keys.sh --update-env).
+include:
+  - path:
+      - supabase/docker-compose.yml
+      - supabase/docker-compose.logs.yml
+      - supabase/docker-compose.yieldstudio.yml   # named volumes for Postgres and Storage (macOS)
+    project_directory: supabase
+    env_file: supabase/.env
+
 x-logging: &logging           # Docker's own copy of container output, capped (Loki keeps the history)
   driver: json-file
   options:

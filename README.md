@@ -10,8 +10,9 @@ a Python Earth Engine Studio.
 .
 ├── frontend/          React + Vite website; Dockerfile builds it and serves it with nginx (see frontend/README.md)
 ├── backend/           FastAPI API, Earth Engine runner, Supabase schema, file pipeline; Dockerfile (see backend/README.md)
+├── supabase/          Self-hosted Supabase, full stack (official compose files + Yield Studio overrides)
 ├── observability/     Loki, Grafana Alloy, Prometheus and Grafana configuration (dashboards, datasources)
-├── docker-compose.yml The whole stack: app + observability
+├── docker-compose.yml The whole stack: app + Supabase + observability
 ├── email-templates/   Supabase Auth email templates (invite, sign-in code)
 ├── data/              Source data for the app (large boundary file is not in git)
 ├── .github/workflows/ GitHub Pages deploy for the frontend (manual only)
@@ -27,6 +28,8 @@ git config core.hooksPath .githooks             # once per clone: blocks commits
 cp .env.example .env                            # set GRAFANA_ADMIN_PASSWORD
 cp backend/.env.example backend/.env            # fill in
 cp frontend/.env.example frontend/.env.local    # fill in (baked into the website at build time)
+cp supabase/.env.example supabase/.env          # then generate its secrets (written to supabase/.env only):
+(cd supabase && sh utils/generate-keys.sh --update-env && sh utils/add-new-auth-keys.sh --update-env)
 earthengine authenticate                        # once, unless EE_SERVICE_ACCOUNT_FILE is used
 
 docker compose up -d --build                    # build and start everything
@@ -42,6 +45,27 @@ docker compose down                             # stop (volumes kept; add -v to 
 | API (docs at /docs, metrics at /metrics) | http://localhost:8000 |
 | Grafana (user `admin`, password from `.env`) | http://localhost:3000 |
 | Prometheus | http://localhost:9090 |
+| Supabase Studio + API gateway (Studio login: `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` in `supabase/.env`) | http://localhost:54321 |
+| Supabase Postgres via Supavisor (session / transaction) | localhost:5432 / localhost:6543 |
+
+## Supabase (self-hosted)
+
+`docker-compose.yml` includes the official self-hosted Supabase compose files from
+[supabase/supabase `docker/`](https://github.com/supabase/supabase/tree/master/docker) (versions in
+`supabase/versions.md`), so the full stack starts with everything else: Postgres, Auth, PostgREST, Realtime, Storage,
+imgproxy, postgres-meta, Edge Functions, Supavisor, the Envoy API gateway, Studio, Logflare analytics and Vector.
+
+Yield Studio changes to the upstream files:
+- `supabase/.env.example`: placeholder secrets (no demo keys); gateway on port 54321, because 8000 is the Yield Studio API; `SITE_URL` is the website.
+- `supabase/docker-compose.yml`: published ports bound to 127.0.0.1.
+- `supabase/docker-compose.yieldstudio.yml`: Postgres and Storage data in Docker named volumes (a bind-mounted
+  Postgres data folder fails on macOS with "wrong ownership").
+
+The Yield Studio backend and website still use the Supabase project set in `backend/.env` and
+`frontend/.env.local`. To use the local stack instead, point them at it: `SUPABASE_URL` / `VITE_SUPABASE_URL` =
+`http://localhost:54321` (backend in Docker: `http://api-gw:8000`), the keys from `supabase/.env`, and
+`DATABASE_URL` = `postgresql://postgres.<POOLER_TENANT_ID>:<POSTGRES_PASSWORD>@supavisor:5432/postgres`; then load
+`backend/supabase/schema.sql` in Studio's SQL editor.
 
 ## Images
 

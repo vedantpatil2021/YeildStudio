@@ -1,0 +1,24 @@
+# Yield Studio overrides for the upstream Supabase compose files (merged last by ../docker-compose.yml).
+#
+# Postgres and Storage keep their data in Docker named volumes instead of bind-mounted folders under ./volumes:
+# on macOS (Docker Desktop) a bind-mounted Postgres data directory shows the wrong owner inside the container and
+# Postgres refuses to start ("data directory has wrong ownership"). Named volumes also keep data out of the repo.
+#
+# Delete the data:  docker compose down -v   (removes ALL volumes of the stack, including Loki/Prometheus/Grafana)
+
+services:
+  db:
+    volumes:
+      - supabase-db-data:/var/lib/postgresql/data
+
+  storage:
+    volumes:
+      - supabase-storage-data:/var/lib/storage
+
+  imgproxy:
+    volumes:
+      - supabase-storage-data:/var/lib/storage
+
+volumes:
+  supabase-db-data:
+  supabase-storage-data:

@@ -72,6 +72,19 @@ logs/
 *.log.[0-9]*
 .run/
 
+# ---- self-hosted Supabase runtime data (supabase/.env is covered by the .env rules above) ---------------------
+supabase/volumes/db/data/
+supabase/volumes/storage/*
+!supabase/volumes/storage/.gitkeep
+supabase/volumes/snippets/*
+!supabase/volumes/snippets/.gitkeep
+supabase/volumes/functions/*
+!supabase/volumes/functions/deno.jsonc
+!supabase/volumes/functions/main/
+!supabase/volumes/functions/hello/
+supabase/backups/
+supabase/docker-compose.override.yml
+
 # ---- kept locally, not in the repo -------------------------------------------------------------------------
 supabase-local/
 prototypes/
