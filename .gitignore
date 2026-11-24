@@ -67,7 +67,7 @@ venv/
 data/boundaries/*.geojson
 
 # ---- local logs (the app logs to stdout -> Loki; these only catch stray files) --------------------------------
-logs/
+/logs/
 *.log
 *.log.[0-9]*
 .run/
