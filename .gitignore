@@ -66,7 +66,7 @@ venv/
 # raw national county file (346 MB); the web copy is frontend/public/data/us_counties.geojson
 data/boundaries/*.geojson
 
-# ---- local runtime: start.sh / stop.sh -------------------------------------------------------------------
+# ---- local runtime: run.sh ------------------------------------------------------------------------------
 # process ids
 .run/
 # service logs (backend.log, backend-access.log, earth-engine.log, frontend.log) and their rotated copies (*.log.1 …)

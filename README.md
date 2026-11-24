@@ -13,8 +13,7 @@ a Python Earth Engine Studio.
 ├── email-templates/   Supabase Auth email templates (invite, sign-in code)
 ├── data/              Source data for the app (large boundary file is not in git)
 ├── .github/workflows/ GitHub Pages deploy for the frontend
-├── start.sh / stop.sh Start / stop all services, or one (backend on 8000, frontend on 5173)
-├── scripts/lib.sh     Shared by start.sh and stop.sh: services, ports, log rotation
+├── run.sh             Start / stop / restart / status / logs for all services or one (backend 8000, frontend 5173)
 ├── logs/              One log file per service (created on start, not in git)
 └── PLAN.md            Plan for the full application
 ```
@@ -25,9 +24,12 @@ a Python Earth Engine Studio.
 git config core.hooksPath .githooks             # once per clone: blocks commits containing secrets
 cp backend/.env.example backend/.env            # fill in
 cp frontend/.env.example frontend/.env.local    # fill in (optional: without it only the demo sign-in works)
-./start.sh                                      # all services; installs dependencies on first run
-./start.sh backend                              # or just one: backend | frontend
-./stop.sh                                       # all services, or ./stop.sh frontend
+./run.sh start                                  # all services; installs dependencies on first run
+./run.sh start backend                          # or just one: backend | frontend
+./run.sh status                                 # what is running
+./run.sh restart frontend                       # stop + start
+./run.sh logs earth-engine                      # follow a log live
+./run.sh stop                                   # all services, or ./run.sh stop frontend
 ```
 
 ## Logs
@@ -42,7 +44,7 @@ Every service writes to its own file in `logs/` (ignored by git), each line time
 | `logs/frontend.log` | Vite dev server output |
 
 Each start rotates the service's logs (`backend.log` → `backend.log.1` … `.5`). Follow one live with
-`tail -f logs/backend.log`. Set `LOG_LEVEL=DEBUG` in `backend/.env` for more detail.
+`./run.sh logs backend` (or `backend-access`, `earth-engine`, `frontend`). Set `LOG_LEVEL=DEBUG` in `backend/.env` for more detail.
 
 Requirements: Node.js 22+, [uv](https://docs.astral.sh/uv/) (creates the backend's Python 3.12 environment).
 

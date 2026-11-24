@@ -4,7 +4,7 @@
     backend-access.log   one line per HTTP request: method, path, status, duration, user
     earth-engine.log     Earth Engine work: script runs, export status, cancels, tile requests
 
-Files are appended to; ../start.sh rotates them on each start (keeps the last 5 runs). When the API runs in a terminal
+Files are appended to; ../run.sh rotates them on each start (keeps the last 5 runs). When the API runs in a terminal
 (e.g. `uvicorn main:app --reload`), messages are also printed there.
 
 Settings: LOG_DIR, LOG_LEVEL (DEBUG, INFO, WARNING, ERROR; default INFO).

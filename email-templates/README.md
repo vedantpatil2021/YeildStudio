@@ -32,7 +32,7 @@ the account already exists.
 
 | Where (Supabase dashboard) | Setting |
 |---|---|
-| Authentication → Sign In / Providers → Email | Email on. **Email OTP length**: this project uses 8; it must equal `VITE_OTP_LENGTH` in `frontend/.env.local` (restart with `./stop.sh && ./start.sh` after changing it). **Email OTP expiration = 600** seconds (the templates say 10 minutes). |
+| Authentication → Sign In / Providers → Email | Email on. **Email OTP length**: this project uses 8; it must equal `VITE_OTP_LENGTH` in `frontend/.env.local` (restart with `./run.sh restart frontend` after changing it). **Email OTP expiration = 600** seconds (the templates say 10 minutes). |
 | Authentication → URL Configuration | **Site URL** = where the website runs (`http://localhost:5173` now; the GitHub Pages address later, including `/AgSensing`). Add the same address under **Redirect URLs**. |
 | Authentication → Emails → SMTP Settings | A real sender (OSU's SMTP, or a free plan such as Resend or Brevo). Supabase's built-in sender only emails members of your Supabase team, a few per hour. |
 
