@@ -39,5 +39,6 @@ Notes:
 
 ## Deploy
 
-`.github/workflows/deploy.yml` builds `frontend/` and publishes it to GitHub Pages on every push to `main`
-(one-time: repo Settings → Pages → Source: "GitHub Actions").
+`.github/workflows/deploy.yml` builds `frontend/` and publishes it to GitHub Pages. It runs only when started by hand
+(Actions tab → "Deploy frontend to GitHub Pages" → Run workflow); pushes do not deploy.
+One-time: repo Settings → Pages → Source: "GitHub Actions".

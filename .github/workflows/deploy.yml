@@ -1,10 +1,8 @@
-# Builds frontend/ and publishes it to GitHub Pages on every push to main.
+# Builds frontend/ and publishes it to GitHub Pages. Manual only (Actions tab → Run workflow); pushes do not deploy.
 # One-time: repo Settings → Pages → Source: "GitHub Actions".
 name: Deploy frontend to GitHub Pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
